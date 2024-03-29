@@ -1,8 +1,8 @@
 ---
 title: "Lab 7: Parking Garage Case Study"
-author: "Your Name"
+author: "Jiayue Yin(jy152)"
 jupyter: julia-1.10
-date: 2024-03-08
+date: 2024-03-28
 categories: [Lab]
 
 format: 
@@ -12,7 +12,7 @@ format:
     # COMMENT OR DELETE THE ONE YOU DON'T WANT TO USE.
     pdf:
         documentclass: article
-        fontsize: 11pt
+        fontsize: 12pt
         geometry:
             - margin=1in  
         number-sections: true
@@ -27,10 +27,11 @@ date-format: "ddd., MMM. D"
 references: references.bib
 ---
 
-
 ```{julia}
 using Revise
 using ParkingGarage
+using Distributions
+
 ```
 
 and also regular packages
@@ -39,4 +40,130 @@ and also regular packages
 using Plots
 Plots.default(; margin=5Plots.mm)
 ```
+
+## Formal problem framing
+
+```{julia}
+let
+    sow = ParkingGarageSOW()
+    years = 1:(sow.n_years)
+    demand = [
+        ParkingGarage.calculate_demand(year, sow.demand_growth_rate) for year in years
+    ]
+    plot(
+        years,
+        demand;
+        ylabel="Demand [cars/day]",
+        xlabel="Year",
+        legend=false,
+        title="Demand Growth Rate: $(sow.demand_growth_rate) Cars/Year",
+        size=(800, 400),
+        marker=:circle,
+    )
+end
+```
+
+
+## Static Policy
+
+```{julia}
+let
+    sow = ParkingGarageSOW(; demand_growth_rate=80.0, n_years=20, discount_rate=0.12)
+    n_levels = 2:12
+    policies = [StaticPolicy(i) for i in n_levels]
+    profits = [simulate(sow, policy) for policy in policies]
+    plot(
+        n_levels,
+        profits;
+        ylabel="NPV Profits [Million USD]",
+        xlabel="Number of levels",
+        legend=false,
+        title="$(sow.n_years) Year Horizon, $(sow.discount_rate) Discount, $(sow.demand_growth_rate) Demand Growth",
+        size=(800, 400),
+        marker=:circle,
+        xticks=n_levels,
+    )
+    hline!([0])
+end
+```
+
+## Uncertainty
+I take the same n_years = 20 and the same discount rate, but use the Normal fuction to create different demanad growth rate and use its mean value.
+```{julia}
+rates = Normal(80,30)
+demand_growth_rates = [rand(rates) for _ in 1:1000]
+let
+    sows = [ParkingGarageSOW(; demand_growth_rate=rate, n_years=20, discount_rate=0.12) for rate in demand_growth_rates]
+    n_levels = 2:12
+    profits = [
+        mean([simulate(sow, StaticPolicy(i)) for sow in sows]) for i in n_levels
+    ]
+    plot(
+        n_levels,
+        profits;
+        ylabel="Average NPV Profits [Million USD]",
+        xlabel="Number of levels",
+        legend=false,
+        title="20 Year Horizon, 0.12 Discount, Variable Demand Growth",
+        size=(800, 400),
+        marker=:circle,
+        xticks=n_levels,
+    )
+    hline!([0])
+end
+
+```
+
+By compareing those two figures, we can find the uncertainty has a great impact.
+
+## Adapative Comparisons
+# single SOW and mutiple SOWs
+```{julia}
+sow = ParkingGarageSOW(; demand_growth_rate=80.0, n_years=20, discount_rate=0.12)
+n_levels = 2:12
+policies = [StaticPolicy(i) for i in n_levels]
+profits = [simulate(sow, policy) for policy in policies]
+adaptive_policies = [AdaptivePolicy(i) for i in n_levels]
+adaptive_profits = [simulate(sow, policy) for policy in adaptive_policies]
+
+plot(
+    n_levels,
+    adaptive_profits;
+    ylabel="NPV Profits [Million USD]",
+    xlabel="Number of levels",
+    marker=:circle,
+    xticks=n_levels,
+    label="Adaptive Policy single SOW"
+)
+hline!([0], label="0 NPV")
+
+rates = Normal(80,30)
+demand_growth_rates = [rand(rates) for _ in 1:1000]
+
+sows = [ParkingGarageSOW(; demand_growth_rate=rate, n_years=20, discount_rate=0.12) for rate in demand_growth_rates]
+n_levels = 2:12
+adaptive_results = []
+
+for policy in adaptive_policies
+    # take the mean of all SOWs for the current level (policy) and add it to the results
+    result_allsow = [simulate(sow, policy) for sow in sows]
+    push!(adaptive_results, mean(result_allsow))
+end
+
+plot!(
+    n_levels,
+    adaptive_results;
+    ylabel="NPV Profits [Million USD]",
+    xlabel="Number of levels",
+    marker=:circle,
+    xticks=n_levels,
+    label="Adaptive Policy SOWs"
+)
+```
+
+In those figures, we can see that mulitple SOWs is slightly higher than the single SOW. And Introducing uncertainty and adopting adaptive policy can more truly reflect the real world situation. , and potentially improve profits.
+
+
+
+
 
